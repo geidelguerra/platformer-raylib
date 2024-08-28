@@ -4,6 +4,12 @@ The goal with this project is to learn all the basics of a platformer type of ga
 
 ![image](screenshot.png)
 
+# Compile and run
+
+```
+odin run . -out:bin/game
+```
+
 ## References
 - https://odin-lang.org/
 - https://github.com/raysan5/raylib
