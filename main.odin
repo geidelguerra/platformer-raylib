@@ -1,13 +1,24 @@
 package main
 
 import "core:fmt"
+import "core:path/filepath"
+import "core:strings"
 import "core:math"
 import rl "vendor:raylib"
+
+PlayerStyle :: enum {
+    beige,
+    blue,
+    green,
+    pink,
+    yellow
+}
 
 PlayerState :: enum {
     idle,
     walking,
     jumping,
+    ducking,
 }
 
 Player :: struct {
@@ -22,31 +33,31 @@ Player :: struct {
     horizontalSpeed: f32,
     jumpStartPosition: rl.Vector2,
     jumpLandPosition: rl.Vector2,
-    textures: [4]rl.Texture,
-    walkStepStartTime: f64,
-    walkStepTime: f64,
-    walkStepDuration: f64,
-    walkStepOdd: bool
+    texture: rl.Texture,
+    walkAnimationTime: f32,
+    style: PlayerStyle
 }
 
 Platform :: struct {
     position: rl.Vector2,
     size: rl.Vector2,
     hitbox: rl.Rectangle,
-    texture: rl.Texture
+    texture: rl.Texture,
+    textureRect: rl.Rectangle,
 }
 
-groundTexture: rl.Texture
-playerTexture: rl.Texture
+groundTextures: rl.Texture
+playerTextures: rl.Texture
 gravity:f32 = 9.8 * 64
-showHelpers := false
+showHelpers := true
 
 createPlatform :: proc(position: rl.Vector2, width: f32) -> Platform {
     size := rl.Vector2{width, 128}
     hitbox := rl.Rectangle{position.x - size.x * 0.5, position.y - size.y, size.x, size.y}
-    texture := groundTexture
+    texture := groundTextures
+    textureRect := rl.Rectangle{128, 384, 128, 128}
 
-    return { position, size, hitbox, texture }
+    return { position, size, hitbox, texture, textureRect }
 }
 
 drawPlatform :: proc(platform: Platform) {
@@ -55,7 +66,7 @@ drawPlatform :: proc(platform: Platform) {
     origin := rl.Vector2{0, 0}
     rotation:f32 = 0
 
-    rl.DrawTexturePro(platform.texture, source, dest, origin, rotation, rl.WHITE)
+    rl.DrawTexturePro(platform.texture, platform.textureRect, dest, origin, rotation, rl.WHITE)
 
     if showHelpers {
         rl.DrawRectangleLinesEx(platform.hitbox, 1, rl.RED)
@@ -63,50 +74,76 @@ drawPlatform :: proc(platform: Platform) {
     }
 }
 
-createPlayer :: proc(position: rl.Vector2) -> Player {
+createPlayer :: proc(position: rl.Vector2, style: PlayerStyle) -> Player {
     player:Player
 
     player.position = position
     player.size = rl.Vector2{128, 256}
     player.hitbox = rl.Rectangle{position.x - player.size.x * 0.5, position.y - player.size.y, player.size.x, player.size.y}
-    player.textures[0] = rl.LoadTexture("assets/PNG/Players/128x256/Beige/alienBeige_front.png")
-    player.textures[1] = rl.LoadTexture("assets/PNG/Players/128x256/Beige/alienBeige_walk1.png")
-    player.textures[2] = rl.LoadTexture("assets/PNG/Players/128x256/Beige/alienBeige_walk2.png")
-    player.textures[3] = rl.LoadTexture("assets/PNG/Players/128x256/Beige/alienBeige_jump.png")
+    player.texture = playerTextures
+    player.style = style
     player.jumpHeight = 256
     player.horizontalSpeed = 128
-    player.walkStepDuration = 0.2
+    player.walkAnimationTime = 0
 
     return player
 }
 
-destroyPlayer :: proc(player: Player) {
-    for texture in player.textures {
-        rl.UnloadTexture(texture)
-    }
-}
-
 drawPlayer :: proc(player: Player) {
-    texture: rl.Texture = player.textures[0]
+    texture := player.texture
     dest := rl.Rectangle{player.position.x - player.size.x * 0.5, player.position.y - player.size.y, player.size.x, player.size.y}
-    source := rl.Rectangle{0, 0, player.size.x, player.size.y}
     origin := rl.Vector2{0, 0}
     rotation: f32 = 0
+    textureIndex := 0
+    textureRects: [5]rl.Rectangle
 
-    if player.isGrounded {
-        if player.faceDirection.x != 0 {
-            if player.walkStepOdd {
-                texture = player.textures[2]
-            } else {
-                texture = player.textures[1]
-            }
-        }
-    } else {
-        texture = player.textures[3]
+    switch player.style {
+        case .beige:
+            textureRects[0] = rl.Rectangle{0, 1024, 128, 256} // stand
+            textureRects[1] = rl.Rectangle{0, 256, 128, 256}  // walk1
+            textureRects[2] = rl.Rectangle{0, 0, 128, 256}    // walk2
+            textureRects[3] = rl.Rectangle{0, 1280, 128, 256} // jump
+            textureRects[4] = rl.Rectangle{128, 0, 128, 256} // duck
+        case .blue:
+            textureRects[0] = rl.Rectangle{768, 0, 128, 256} // stand
+            textureRects[1] = rl.Rectangle{640, 1280, 128, 256}  // walk1
+            textureRects[2] = rl.Rectangle{640, 1024, 128, 256}    // walk2
+            textureRects[3] = rl.Rectangle{768, 256, 128, 256} // jump
+            textureRects[4] = rl.Rectangle{768, 1024, 128, 256} // duck
+        case .green:
+            textureRects[0] = rl.Rectangle{512, 1280, 128, 256} // stand
+            textureRects[1] = rl.Rectangle{512, 512, 128, 256}  // walk1
+            textureRects[2] = rl.Rectangle{512, 256, 128, 256}    // walk2
+            textureRects[3] = rl.Rectangle{512, 1536, 128, 256} // jump
+            textureRects[4] = rl.Rectangle{640, 256, 128, 256} // duck
+        case .pink:
+            textureRects[0] = rl.Rectangle{384, 1280, 128, 256} // stand
+            textureRects[1] = rl.Rectangle{256, 1792, 128, 256}  // walk1
+            textureRects[2] = rl.Rectangle{256, 1536, 128, 256}    // walk2
+            textureRects[3] = rl.Rectangle{768, 1536, 128, 256} // jump
+            textureRects[4] = rl.Rectangle{384, 1536, 128, 256} // duck
+        case .yellow:
+            textureRects[0] = rl.Rectangle{128, 1792, 128, 256} // stand
+            textureRects[1] = rl.Rectangle{128, 1024, 128, 256}  // walk1
+            textureRects[2] = rl.Rectangle{128, 768, 128, 256}    // walk2
+            textureRects[3] = rl.Rectangle{256, 0, 128, 256} // jump
+            textureRects[4] = rl.Rectangle{256, 768, 128, 256} // duck
     }
 
+    switch player.state {
+        case PlayerState.idle:
+            textureIndex = 0
+        case PlayerState.walking:
+            textureIndex = 1 + int(math.mod(player.walkAnimationTime*2, 2))
+        case PlayerState.jumping:
+            textureIndex = 3
+        case PlayerState.ducking:
+            textureIndex = 4
+    }
+
+    source := textureRects[textureIndex]
+
     if player.faceDirection.x < 0 {
-        source.x = source.width
         source.width = -source.width
     }
 
@@ -123,15 +160,22 @@ main :: proc() {
     defer rl.CloseWindow()
     rl.SetTargetFPS(144)
 
-    groundTexture = rl.LoadTexture("assets/PNG/Ground/Grass/grassMid.png")
-    defer rl.UnloadTexture(groundTexture)
+    groundTextures = rl.LoadTexture(cstring("assets/Spritesheets/spritesheet_ground.png"))
+    defer rl.UnloadTexture(groundTextures)
 
-    // playerTexture = rl.LoadTexture("assets/PNG/Players/128x256/Beige/alienBeige_stand.png")
-    // defer rl.UnloadTexture(playerTexture)
+    playerTextures = rl.LoadTexture(cstring("assets/Spritesheets/spritesheet_players.png"))
+    defer rl.UnloadTexture(playerTextures)
 
     ground := createPlatform({f32(rl.GetScreenWidth()) * 0.5, f32(rl.GetScreenHeight())}, f32(rl.GetScreenWidth()))
-    player := createPlayer({f32(rl.GetScreenWidth()) * 0.5, ground.hitbox.y})
-    defer destroyPlayer(player)
+    player := createPlayer({f32(rl.GetScreenWidth()) * 0.5, ground.hitbox.y}, .blue)
+
+    keyToStyleMap := map[rl.KeyboardKey]PlayerStyle{
+        rl.KeyboardKey.ONE=PlayerStyle.beige,
+        rl.KeyboardKey.TWO=PlayerStyle.blue,
+        rl.KeyboardKey.THREE=PlayerStyle.green,
+        rl.KeyboardKey.FOUR=PlayerStyle.pink,
+        rl.KeyboardKey.FIVE=PlayerStyle.yellow,
+    }
 
     for !rl.WindowShouldClose() {
         dt := rl.GetFrameTime()
@@ -141,50 +185,79 @@ main :: proc() {
             rl.TakeScreenshot(cstring("screenshot.png"))
         }
 
-        if rl.IsKeyDown(rl.KeyboardKey.LEFT) {
+        for key, style in keyToStyleMap {
+            if rl.IsKeyPressed(key) {
+                player.style = style
+            }
+        }
+
+        if rl.IsKeyPressed(rl.KeyboardKey.H) {
+            showHelpers = !showHelpers
+        }
+
+        if rl.IsKeyDown(rl.KeyboardKey.A) {
             player.faceDirection.x = -1
             playerVelocityX = player.faceDirection.x * player.horizontalSpeed
         }
 
-        if rl.IsKeyDown(rl.KeyboardKey.RIGHT) {
+        if rl.IsKeyDown(rl.KeyboardKey.D) {
             player.faceDirection.x = 1
             playerVelocityX = player.faceDirection.x * player.horizontalSpeed
         }
 
-        if player.velocity.x == 0 && playerVelocityX != 0 {
-            player.walkStepStartTime = rl.GetTime()
+        if playerVelocityX == 0 {
+            if player.state != .jumping {
+                player.state = .idle
+            }
+        } else {
+            if player.state != .jumping {
+                player.state = .walking
+            }
         }
 
-        player.velocity.x = playerVelocityX
+        if rl.IsKeyDown(rl.KeyboardKey.S) {
+            if player.state == PlayerState.idle || player.state == PlayerState.walking {
+                player.state = PlayerState.ducking
+                playerVelocityX = 0
+            }
+        }
 
-        if rl.CheckCollisionRecs(player.hitbox, ground.hitbox) {
-            player.velocity.y = 0
-            player.position.y = ground.hitbox.y
-            player.isGrounded = true
+        if rl.IsKeyReleased(rl.KeyboardKey.S) {
+            if player.state == PlayerState.ducking {
+                player.state = PlayerState.idle
+            }
+        }
 
-            if rl.IsKeyPressed(rl.KeyboardKey.SPACE) {
+        if rl.IsKeyPressed(rl.KeyboardKey.SPACE) {
+            if player.state == PlayerState.idle || player.state == PlayerState.walking {
                 initialVelocity := -math.sqrt_f32(2 * gravity * player.jumpHeight)
                 player.velocity.y = initialVelocity
                 player.jumpStartPosition = player.position
+                player.state = PlayerState.jumping
             }
-        } else {
-            player.isGrounded = false
-            player.velocity.y += gravity * dt
-            player.jumpLandPosition.x = player.position.x + player.velocity.x * dt
-            player.jumpLandPosition.y = 0
         }
 
+        if player.state == PlayerState.walking  {
+            player.walkAnimationTime += dt
+        } else {
+            player.walkAnimationTime = 0
+        }
+
+        player.velocity.x = playerVelocityX
         player.position += player.velocity * dt
         player.hitbox.x = player.position.x - player.size.x * 0.5
         player.hitbox.y = player.position.y - player.size.y + 1
 
-        if player.velocity.x != 0 {
-            player.walkStepTime = rl.GetTime() - player.walkStepStartTime
-        }
-
-        if player.walkStepTime >= player.walkStepDuration {
-            player.walkStepOdd = !player.walkStepOdd
-            player.walkStepStartTime = rl.GetTime()
+        if player.state == PlayerState.jumping {
+            if rl.CheckCollisionRecs(player.hitbox, ground.hitbox) {
+                player.velocity.y = 0
+                player.position.y = ground.hitbox.y
+                player.state = PlayerState.idle
+            } else {
+                player.velocity.y += gravity * dt
+                player.jumpLandPosition.x = player.position.x + player.velocity.x * dt
+                player.jumpLandPosition.y = 0
+            }
         }
 
         rl.BeginDrawing()
@@ -195,24 +268,9 @@ main :: proc() {
         drawPlayer(player)
 
         if showHelpers {
-            gridY := f32(rl.GetScreenHeight())
-            screenCenterX := f32(rl.GetScreenWidth()) * 0.5
-            for gridY > 0 {
-                gridY -= 32
-                // relativeY := (f32(rl.GetScreenHeight()) - gridY)
-
-                lineWidth := 10
-                start := rl.Vector2{screenCenterX, gridY}
-                end := rl.Vector2{screenCenterX + f32(lineWidth), gridY}
-                relativeY := ground.hitbox.y - gridY
-
-                rl.DrawLineEx(start, end, 2, rl.WHITE)
-                rl.DrawText(fmt.ctprintf("%0.1fpx", relativeY), i32(end.x + 10), i32(end.y - 16), 20, rl.WHITE)
-            }
-
             rl.DrawText(fmt.ctprintf("Vertical Velocity %f", player.velocity.y), 10, 10, 20, rl.YELLOW)
             rl.DrawText(fmt.ctprintf("Is Grounded %s", player.isGrounded), 10, 30, 20, rl.YELLOW)
-            rl.DrawText(fmt.ctprintf("Walk step time %f", player.walkStepTime), 10, 50, 20, rl.YELLOW)
+            rl.DrawText(fmt.ctprintf("Player state %s", player.state), 10, 50, 20, rl.YELLOW)
         }
 
         rl.EndDrawing()
