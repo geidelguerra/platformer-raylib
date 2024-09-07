@@ -49,7 +49,7 @@ Platform :: struct {
     position: rl.Vector2,
     size: rl.Vector2,
     hitbox: rl.Rectangle,
-    textureRects: [4]rl.Rectangle,
+    atlasRects: [4]rl.Rectangle,
 }
 
 Game :: struct {
@@ -93,17 +93,22 @@ screenToTileRec :: proc(rec: rl.Rectangle) -> rl.Rectangle {
     return {rec.x / PIXEL_PER_TILE, rec.y / PIXEL_PER_TILE, rec.width / PIXEL_PER_TILE, rec.height / PIXEL_PER_TILE}
 }
 
-createPlatform :: proc(position: rl.Vector2, width: f32) -> Platform {
-    size := rl.Vector2{width, 2}
-    hitbox := rl.Rectangle{position.x, position.y, size.x, size.y}
-    textureRects := [?]rl.Rectangle{
+createPlatform :: proc(game: ^Game, position: rl.Vector2, width: f32, height: f32) {
+    platform: Platform
+    platform.size.x = width
+    platform.size.y = height
+    platform.hitbox.x = position.x
+    platform.hitbox.y = position.y
+    platform.hitbox.width = platform.size.x
+    platform.hitbox.height = platform.size.y
+    platform.atlasRects = [?]rl.Rectangle{
         rl.Rectangle{128, 128, 128, 128},
         rl.Rectangle{0, 256, 128, 128},
         rl.Rectangle{0, 128, 128, 128},
         rl.Rectangle{0, 0, 128, 128}
     }
 
-    return { position, size, hitbox, textureRects }
+    append(&game.platforms, platform)
 }
 
 drawPlatform :: proc(platform: Platform, atlas: rl.Texture2D) {
@@ -117,9 +122,9 @@ drawPlatform :: proc(platform: Platform, atlas: rl.Texture2D) {
     tileHeight := f32(128)
 
     if size.x == tileWidth {
-        rl.DrawTexturePro(atlas, platform.textureRects[0], rl.Rectangle{position.x, position.y, size.x, size.y}, origin, rotation, rl.WHITE)
+        rl.DrawTexturePro(atlas, platform.atlasRects[0], rl.Rectangle{position.x, position.y, size.x, size.y}, origin, rotation, rl.WHITE)
     } else {
-        rl.DrawTexturePro(atlas, platform.textureRects[1], rl.Rectangle{position.x, position.y, tileWidth, tileHeight}, origin, rotation, rl.WHITE)
+        rl.DrawTexturePro(atlas, platform.atlasRects[1], rl.Rectangle{position.x, position.y, tileWidth, tileHeight}, origin, rotation, rl.WHITE)
 
         dx := tileWidth
         tw := tileWidth
@@ -131,7 +136,7 @@ drawPlatform :: proc(platform: Platform, atlas: rl.Texture2D) {
 
             rl.DrawTexturePro(
                 atlas,
-                platform.textureRects[2],
+                platform.atlasRects[2],
                 rl.Rectangle{position.x + dx, position.y, tw, tileHeight},
                 origin,
                 rotation,
@@ -142,7 +147,7 @@ drawPlatform :: proc(platform: Platform, atlas: rl.Texture2D) {
 
         rl.DrawTexturePro(
             atlas,
-            platform.textureRects[3],
+            platform.atlasRects[3],
             rl.Rectangle{position.x + dx, position.y, tileWidth, tileHeight},
             origin,
             rotation,
@@ -395,10 +400,10 @@ initGame :: proc(game: ^Game) {
     game.platformAtlas = rl.LoadTexture(cstring("assets/Spritesheets/spritesheet_ground.png"))
     game.playerAtlas = rl.LoadTexture(cstring("assets/Spritesheets/spritesheet_players.png"))
 
-    append(&game.platforms, createPlatform({0, 12}, 4))
-    append(&game.platforms, createPlatform({4, 14}, 10))
-    append(&game.platforms, createPlatform({8, 9}, 4))
-    append(&game.platforms, createPlatform({14, 12}, 4))
+    createPlatform(game, {0, 12}, 4, 2)
+    createPlatform(game, {4, 14}, 10, 2)
+    createPlatform(game, {8, 9}, 4, 2)
+    createPlatform(game, {14, 12}, 4, 2)
 
     game.player = createPlayer({1, 5}, .beige)
 
