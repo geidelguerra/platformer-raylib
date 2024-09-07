@@ -62,7 +62,7 @@ Game :: struct {
 
 game: Game
 
-PIXEL_PER_TILE :: 64
+TILE_SIZE :: 128
 groundTextures: rl.Texture
 playerTextures: rl.Texture
 gravity:f32 = 30
@@ -78,23 +78,25 @@ keyToStyleMap := map[rl.KeyboardKey]PlayerStyle{
 }
 
 tileToScreenV :: proc(pos: rl.Vector2) -> rl.Vector2 {
-    return pos * PIXEL_PER_TILE
+    return pos * TILE_SIZE
 }
 
 tileToScreenRec :: proc(rec: rl.Rectangle) -> rl.Rectangle {
-    return {rec.x * PIXEL_PER_TILE, rec.y * PIXEL_PER_TILE, rec.width * PIXEL_PER_TILE, rec.height * PIXEL_PER_TILE}
+    return {rec.x * TILE_SIZE, rec.y * TILE_SIZE, rec.width * TILE_SIZE, rec.height * TILE_SIZE}
 }
 
 screenToTileV :: proc(pos: rl.Vector2) -> rl.Vector2 {
-    return {pos.x / PIXEL_PER_TILE, pos.y / PIXEL_PER_TILE}
+    return {pos.x / TILE_SIZE, pos.y / TILE_SIZE}
 }
 
 screenToTileRec :: proc(rec: rl.Rectangle) -> rl.Rectangle {
-    return {rec.x / PIXEL_PER_TILE, rec.y / PIXEL_PER_TILE, rec.width / PIXEL_PER_TILE, rec.height / PIXEL_PER_TILE}
+    return {rec.x / TILE_SIZE, rec.y / TILE_SIZE, rec.width / TILE_SIZE, rec.height / TILE_SIZE}
 }
 
 createPlatform :: proc(game: ^Game, position: rl.Vector2, width: f32, height: f32) {
     platform: Platform
+    platform.position.x = position.x
+    platform.position.y = position.y
     platform.size.x = width
     platform.size.y = height
     platform.hitbox.x = position.x
@@ -102,10 +104,10 @@ createPlatform :: proc(game: ^Game, position: rl.Vector2, width: f32, height: f3
     platform.hitbox.width = platform.size.x
     platform.hitbox.height = platform.size.y
     platform.atlasRects = [?]rl.Rectangle{
-        rl.Rectangle{128, 128, 128, 128},
-        rl.Rectangle{0, 256, 128, 128},
-        rl.Rectangle{0, 128, 128, 128},
-        rl.Rectangle{0, 0, 128, 128}
+        rl.Rectangle{128, 128, TILE_SIZE, TILE_SIZE},
+        rl.Rectangle{0, 256, TILE_SIZE, TILE_SIZE},
+        rl.Rectangle{0, 128, TILE_SIZE, TILE_SIZE},
+        rl.Rectangle{0, 0, TILE_SIZE, TILE_SIZE}
     }
 
     append(&game.platforms, platform)
@@ -118,8 +120,8 @@ drawPlatform :: proc(platform: Platform, atlas: rl.Texture2D) {
     source := rl.Rectangle{0, 0, size.x, size.y}
     origin := rl.Vector2{0, 0}
     rotation:f32 = 0
-    tileWidth := f32(128)
-    tileHeight := f32(128)
+    tileWidth := f32(TILE_SIZE)
+    tileHeight := f32(TILE_SIZE)
 
     if size.x == tileWidth {
         rl.DrawTexturePro(atlas, platform.atlasRects[0], rl.Rectangle{position.x, position.y, size.x, size.y}, origin, rotation, rl.WHITE)
@@ -156,17 +158,17 @@ drawPlatform :: proc(platform: Platform, atlas: rl.Texture2D) {
     }
 }
 
-createPlayer :: proc(position: rl.Vector2, style: PlayerStyle) -> Player {
+createPlayer :: proc(style: PlayerStyle) -> Player {
     player:Player
-    player.position = position
-    player.size = screenToTileV({128, 256})
-    player.hitbox = rl.Rectangle{position.x, position.y, player.size.x - 0.5, player.size.y - 1.5}
+    player.size = screenToTileV({TILE_SIZE, 256})
+    player.hitbox.width = player.size.x
+    player.hitbox.height = player.size.x
     player.style = style
-    player.jumpHeight = 6
-    player.horizontalSpeed = 10
+    player.jumpHeight = 3.5
+    player.horizontalSpeed = 7
     player.maxFallSpeed = 10
     player.walkAnimationTime = 0
-    player.walkAnimationDuration = 15
+    player.walkAnimationDuration = 10
 
     return player
 }
@@ -254,21 +256,34 @@ updateGame :: proc(game: ^Game, dt: f32) {
     }
 
     {
+        screenSize := rl.Vector2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}
         camera := &game.camera
-        position := tileToScreenV(player.position)
-        minScreenTargetY := f32(rl.GetScreenHeight()) - 256
-        maxDistanceY:f32 = 512
-        target:rl.Vector2
-        target.x = position.x
-        target.y = minScreenTargetY
-        playerOffsetY := minScreenTargetY - position.y
-        if playerOffsetY > maxDistanceY {
-            target.y = minScreenTargetY - (playerOffsetY - maxDistanceY) * dt
-        }
-        camera.target = target
-        horizontalOffset := f32(0)
-        cameraOffset := rl.Vector2{f32(rl.GetScreenWidth()) * 0.5 - player.faceDirection.x * horizontalOffset, f32(rl.GetScreenHeight() - 128)}
-        camera.offset = linalg.lerp(camera.offset, cameraOffset, dt * 1.2)
+        playerWorldPosition := tileToScreenV(player.position)
+        playerScreenPosition := rl.GetWorldToScreen2D(playerWorldPosition, camera^)
+        minTargetY := screenSize.y
+        // minScreenTargetY := f32(rl.GetScreenHeight()) - 256
+        // maxDistanceY:f32 = 512
+        // horizontalOffset := f32(TILE_SIZE)
+        target: rl.Vector2
+        target.x = playerWorldPosition.x
+        target.y = playerWorldPosition.y
+        // if minTargetY - playerWorldPosition.y > TILE_SIZE {
+            // target.y = playerWorldPosition.y
+        // } else {
+            // target.y = minTargetY
+        // }
+
+        // target.y = minScreenTargetY
+        // playerOffsetY := minScreenTargetY - playerPosition.y
+
+        // if playerOffsetY > maxDistanceY {
+            // target.y = minScreenTargetY - (playerOffsetY - maxDistanceY) * dt
+        // }
+
+        camera.target = linalg.lerp(camera.target, target, dt * 1.2)
+        // camera.target = target
+        camera.offset.x = screenSize.x * 0.5
+        camera.offset.y = screenSize.y * 0.5
         camera.zoom = 1
         camera.rotation = 0
     }
@@ -359,36 +374,11 @@ drawPlayer :: proc(player: Player, atlas: rl.Texture2D) {
     rl.DrawTexturePro(atlas, textureSource, dest, origin, rotation, rl.WHITE)
 }
 
-// updateCamera :: proc(camera: ^Game, dt: f32) {
-//     camera := &game.camera
-//     player := &game.player
-
-//     position := tileToScreenV(player.position)
-//     minScreenTargetY := f32(rl.GetScreenHeight()) - 256
-//     maxDistanceY:f32 = 512
-//     target:rl.Vector2
-//     target.x = position.x
-//     target.y = minScreenTargetY
-//     playerOffsetY := minScreenTargetY - position.y
-//     if playerOffsetY > maxDistanceY {
-//         target.y = minScreenTargetY - (playerOffsetY - maxDistanceY) * dt
-//     }
-//     camera.target = target
-//     horizontalOffset := f32(0)
-//     cameraOffset := rl.Vector2{f32(rl.GetScreenWidth()) * 0.5 - player.faceDirection.x * horizontalOffset, f32(rl.GetScreenHeight() - 128)}
-//     if false {
-//         camera.offset = linalg.lerp(camera.offset, cameraOffset, dt * 1.2)
-//     } else  {
-//         camera.offset = cameraOffset
-//     }
-//     camera.zoom = 1
-//     camera.rotation = 0
-// }
 
 restartGame :: proc(game: ^Game) {
     player := &game.player
-    player.position.x = 1
-    player.position.y = 5
+    player.position.x = 0
+    player.position.y = -5
     player.velocity.x = 0
     player.velocity.y = 0
     player.hitbox.x = player.position.x - player.size.x * 0.5 - (player.hitbox.width - player.size.x) * 0.5
@@ -400,12 +390,13 @@ initGame :: proc(game: ^Game) {
     game.platformAtlas = rl.LoadTexture(cstring("assets/Spritesheets/spritesheet_ground.png"))
     game.playerAtlas = rl.LoadTexture(cstring("assets/Spritesheets/spritesheet_players.png"))
 
-    createPlatform(game, {0, 12}, 4, 2)
-    createPlatform(game, {4, 14}, 10, 2)
-    createPlatform(game, {8, 9}, 4, 2)
-    createPlatform(game, {14, 12}, 4, 2)
+    createPlatform(game, {0, 0}, 4, 1)
+    // createPlatform(game, {4, 14}, 10, 1)
+    // createPlatform(game, {8, 9}, 4, 1)
+    // createPlatform(game, {12, 6}, 4, 1)
+    // createPlatform(game, {14, 12}, 4, 1)
 
-    game.player = createPlayer({1, 5}, .beige)
+    game.player = createPlayer({0, -5}, .beige)
 
     // x:f32 = 0
     // for _ in 0..<50 {
@@ -454,20 +445,22 @@ drawGame :: proc(game: Game) {
             rl.DrawText(fmt.ctprint(tileToScreenRec(game.player.lastCollisionPlatform.hitbox)), i32(hitbox.x), i32(hitbox.y - 64), 20, rl.BLUE)
         }
 
+        rl.DrawCircleV(game.camera.offset, 6, rl.PINK)
         rl.DrawCircleV(game.camera.target, 2, rl.YELLOW)
+        rl.DrawCircleV(tileToScreenV(game.player.position), 5, rl.RED)
     }
 
     rl.EndMode2D()
 
     if showHelpers {
-        rl.DrawCircleV(tileToScreenV(game.player.position), 5, rl.RED)
-
         rl.DrawText(fmt.ctprintf("FPS %d", rl.GetFPS()), 10, 10, 20, rl.YELLOW)
         rl.DrawText(fmt.ctprintf("Position %f:%f", game.player.position.x, game.player.position.y), 10, 30, 20, rl.YELLOW)
         rl.DrawText(fmt.ctprintf("Position %f:%f", game.player.position.x, game.player.position.y), 10, 50, 20, rl.YELLOW)
         rl.DrawText(fmt.ctprintf("Velocity %f:%f", game.player.velocity.x, game.player.velocity.y), 10, 70, 20, rl.YELLOW)
         rl.DrawText(fmt.ctprintf("State %s", game.player.state), 10, 90, 20, rl.YELLOW)
-        rl.DrawText(fmt.ctprintf("Is Grounded %s", game.player.isGrounded), 10, 110, 20, rl.YELLOW)
+        if game.player.isGrounded {
+            rl.DrawText(cstring("Is Grounded"), 10, 110, 20, rl.BLUE)
+        }
 
         if game.player.hasCollision {
             rl.DrawText(fmt.ctprintf("Collision"), 10, 130, 20, rl.MAGENTA)
@@ -493,11 +486,11 @@ main :: proc() {
             rl.TakeScreenshot(cstring("screenshot.png"))
         }
 
-        if rl.IsKeyPressed(.R) {
+        if rl.IsKeyPressed(.F5) {
             restartGame(&game)
         }
 
-        if rl.IsKeyPressed(rl.KeyboardKey.H) {
+        if rl.IsKeyPressed(rl.KeyboardKey.F1) {
             showHelpers = !showHelpers
         }
 
