@@ -422,9 +422,9 @@ main :: proc() {
     //     x += w + f32(2 + rand.int_max(4))
     // }
 
-    append(&platforms, createPlatform({0, 14}, 10))
-    append(&platforms, createPlatform({-4, 12}, 4))
-    append(&platforms, createPlatform({6, 12}, 4))
+    append(&platforms, createPlatform({0, 12}, 4))
+    append(&platforms, createPlatform({4, 14}, 10))
+    append(&platforms, createPlatform({14, 12}, 4))
 
     player := createPlayer({1, 5}, .blue)
     camera: rl.Camera2D
