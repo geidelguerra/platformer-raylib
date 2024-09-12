@@ -45,11 +45,19 @@ Player :: struct {
     lastCollisionPlatform: Platform
 }
 
+TileType :: enum {
+    leftCorner,
+    rightCorner,
+    centerCorner,
+    topCenter,
+    center,
+}
+
 Platform :: struct {
     position: rl.Vector2,
     size: rl.Vector2,
     hitbox: rl.Rectangle,
-    atlasRects: [4]rl.Rectangle,
+    tileRects: map[TileType]rl.Rectangle,
 }
 
 Game :: struct {
@@ -103,11 +111,18 @@ createPlatform :: proc(game: ^Game, position: rl.Vector2, width: f32, height: f3
     platform.hitbox.y = position.y
     platform.hitbox.width = platform.size.x
     platform.hitbox.height = platform.size.y
-    platform.atlasRects = [?]rl.Rectangle{
-        rl.Rectangle{128, 128, TILE_SIZE, TILE_SIZE},
-        rl.Rectangle{0, 256, TILE_SIZE, TILE_SIZE},
-        rl.Rectangle{0, 128, TILE_SIZE, TILE_SIZE},
-        rl.Rectangle{0, 0, TILE_SIZE, TILE_SIZE}
+    //platform.atlasRects = [?]rl.Rectangle{
+    //    rl.Rectangle{128, 128, TILE_SIZE, TILE_SIZE},
+    //    rl.Rectangle{0, 256, TILE_SIZE, TILE_SIZE},
+    //    rl.Rectangle{0, 128, TILE_SIZE, TILE_SIZE},
+    //    rl.Rectangle{0, 0, TILE_SIZE, TILE_SIZE},
+    //    rl.Rectangle{128, 0, TILE_SIZE, TILE_SIZE},
+    //}
+    platform.tileRects = map[TileType]rl.Rectangle{
+        TileType.center = rl.Rectangle{128, 128, TILE_SIZE, TILE_SIZE},
+        TileType.leftCorner = rl.Rectangle{0, 256, TILE_SIZE, TILE_SIZE},
+        TileType.rightCorner = rl.Rectangle{0, 0, TILE_SIZE, TILE_SIZE},
+        TileType.topCenter = rl.Rectangle{128, 128, TILE_SIZE, TILE_SIZE},
     }
 
     append(&game.platforms, platform)
@@ -120,41 +135,24 @@ drawPlatform :: proc(platform: Platform, atlas: rl.Texture2D) {
     source := rl.Rectangle{0, 0, size.x, size.y}
     origin := rl.Vector2{0, 0}
     rotation:f32 = 0
-    tileWidth := f32(TILE_SIZE)
-    tileHeight := f32(TILE_SIZE)
 
-    if size.x == tileWidth {
-        rl.DrawTexturePro(atlas, platform.atlasRects[0], rl.Rectangle{position.x, position.y, size.x, size.y}, origin, rotation, rl.WHITE)
-    } else {
-        rl.DrawTexturePro(atlas, platform.atlasRects[1], rl.Rectangle{position.x, position.y, tileWidth, tileHeight}, origin, rotation, rl.WHITE)
-
-        dx := tileWidth
-        tw := tileWidth
-        for dx < size.x - tileWidth {
-            dw := size.x - tileWidth - dx
-            if dw < tw {
-                tw = dw
+    if size.x == TILE_SIZE {
+        rl.DrawTexturePro(atlas, platform.tileRects[TileType.center], rl.Rectangle{position.x, position.y, TILE_SIZE, TILE_SIZE}, origin, rotation, rl.WHITE)
+    } else if size.x > TILE_SIZE {
+        destRect := rl.Rectangle{position.x, position.y, TILE_SIZE, TILE_SIZE}
+        sourceRect : rl.Rectangle
+        for destRect.x + destRect.width <= position.x + size.x {
+            if destRect.x == position.x {
+                sourceRect = platform.tileRects[TileType.leftCorner]
+            } else if destRect.x + destRect.width == position.x + size.x {
+                sourceRect = platform.tileRects[TileType.rightCorner]
+            } else {
+                sourceRect = platform.tileRects[TileType.topCenter]
             }
 
-            rl.DrawTexturePro(
-                atlas,
-                platform.atlasRects[2],
-                rl.Rectangle{position.x + dx, position.y, tw, tileHeight},
-                origin,
-                rotation,
-                rl.WHITE
-            )
-            dx += tw
+            rl.DrawTexturePro(atlas, sourceRect, destRect, origin, rotation, rl.WHITE)
+            destRect.x += TILE_SIZE
         }
-
-        rl.DrawTexturePro(
-            atlas,
-            platform.atlasRects[3],
-            rl.Rectangle{position.x + dx, position.y, tileWidth, tileHeight},
-            origin,
-            rotation,
-            rl.WHITE
-        )
     }
 }
 
@@ -217,6 +215,7 @@ updateGame :: proc(game: ^Game, dt: f32) {
     player.velocity.y += gravity * dt
     player.isGrounded = false
     player.hasCollision = false
+    checkCollision := player.velocity.x != 0 || player.velocity.y != 0
 
     // Apply y velocity and check collision
     {
@@ -260,31 +259,14 @@ updateGame :: proc(game: ^Game, dt: f32) {
         camera := &game.camera
         playerWorldPosition := tileToScreenV(player.position)
         playerScreenPosition := rl.GetWorldToScreen2D(playerWorldPosition, camera^)
-        minTargetY := screenSize.y
-        // minScreenTargetY := f32(rl.GetScreenHeight()) - 256
-        // maxDistanceY:f32 = 512
-        // horizontalOffset := f32(TILE_SIZE)
+        maxDistanceY:f32 = TILE_SIZE * 0.5
         target: rl.Vector2
         target.x = playerWorldPosition.x
         target.y = playerWorldPosition.y
-        // if minTargetY - playerWorldPosition.y > TILE_SIZE {
-            // target.y = playerWorldPosition.y
-        // } else {
-            // target.y = minTargetY
-        // }
-
-        // target.y = minScreenTargetY
-        // playerOffsetY := minScreenTargetY - playerPosition.y
-
-        // if playerOffsetY > maxDistanceY {
-            // target.y = minScreenTargetY - (playerOffsetY - maxDistanceY) * dt
-        // }
-
-        camera.target = linalg.lerp(camera.target, target, dt * 1.2)
-        // camera.target = target
+        camera.target = target
         camera.offset.x = screenSize.x * 0.5
-        camera.offset.y = screenSize.y * 0.5
-        camera.zoom = 1
+        camera.offset.y = screenSize.y * 0.5 
+        camera.zoom = 1 
         camera.rotation = 0
     }
 
@@ -378,7 +360,7 @@ drawPlayer :: proc(player: Player, atlas: rl.Texture2D) {
 restartGame :: proc(game: ^Game) {
     player := &game.player
     player.position.x = 0
-    player.position.y = -5
+    player.position.y = 0 
     player.velocity.x = 0
     player.velocity.y = 0
     player.hitbox.x = player.position.x - player.size.x * 0.5 - (player.hitbox.width - player.size.x) * 0.5
@@ -390,13 +372,13 @@ initGame :: proc(game: ^Game) {
     game.platformAtlas = rl.LoadTexture(cstring("assets/Spritesheets/spritesheet_ground.png"))
     game.playerAtlas = rl.LoadTexture(cstring("assets/Spritesheets/spritesheet_players.png"))
 
-    createPlatform(game, {0, 0}, 4, 1)
-    // createPlatform(game, {4, 14}, 10, 1)
-    // createPlatform(game, {8, 9}, 4, 1)
-    // createPlatform(game, {12, 6}, 4, 1)
+    createPlatform(game, {0, 0}, 1, 1)
+    createPlatform(game, {4, 0}, 2, 1)
+    createPlatform(game, {8, 0}, 1, 1)
+    createPlatform(game, {-2, 0}, 2, 1)
     // createPlatform(game, {14, 12}, 4, 1)
 
-    game.player = createPlayer({0, -5}, .beige)
+    game.player = createPlayer(.beige)
 
     // x:f32 = 0
     // for _ in 0..<50 {
@@ -427,6 +409,12 @@ drawGame :: proc(game: Game) {
     drawPlayer(game.player, game.playerAtlas)
 
     if showHelpers {
+        screenCenter := rl.Vector2{f32(rl.GetScreenWidth()) * 0.5, f32(rl.GetScreenHeight()) * 0.5}
+        cameraCenter := game.camera.target
+
+        rl.DrawLineEx({-cameraCenter.x, 0}, {cameraCenter.x, 0}, 1, rl.RED)
+        rl.DrawLineEx({0, -cameraCenter.y}, {0, cameraCenter.y}, 1, rl.RED)
+
         for platform in game.platforms {
             position := tileToScreenV(platform.position)
             hitbox := tileToScreenRec(platform.hitbox)
@@ -436,14 +424,6 @@ drawGame :: proc(game: Game) {
 
         hitbox := tileToScreenRec(game.player.hitbox)
         rl.DrawRectangleLinesEx(hitbox, 1, rl.RED)
-        rl.DrawText(fmt.ctprint(hitbox), i32(hitbox.x), i32(hitbox.y - 22), 20, rl.RED)
-
-        if game.player.hasCollision {
-            rec := tileToScreenRec(game.player.lastCollision)
-            rl.DrawRectangleRec(rec, rl.MAGENTA)
-            rl.DrawText(fmt.ctprint(rec), i32(hitbox.x), i32(hitbox.y - 44), 20, rl.MAGENTA)
-            rl.DrawText(fmt.ctprint(tileToScreenRec(game.player.lastCollisionPlatform.hitbox)), i32(hitbox.x), i32(hitbox.y - 64), 20, rl.BLUE)
-        }
 
         rl.DrawCircleV(game.camera.offset, 6, rl.PINK)
         rl.DrawCircleV(game.camera.target, 2, rl.YELLOW)
@@ -453,18 +433,24 @@ drawGame :: proc(game: Game) {
     rl.EndMode2D()
 
     if showHelpers {
+        playerWorldPosition := tileToScreenV(game.player.position)
+        playerScreenPosition := rl.GetWorldToScreen2D(playerWorldPosition, game.camera)
         rl.DrawText(fmt.ctprintf("FPS %d", rl.GetFPS()), 10, 10, 20, rl.YELLOW)
-        rl.DrawText(fmt.ctprintf("Position %f:%f", game.player.position.x, game.player.position.y), 10, 30, 20, rl.YELLOW)
-        rl.DrawText(fmt.ctprintf("Position %f:%f", game.player.position.x, game.player.position.y), 10, 50, 20, rl.YELLOW)
-        rl.DrawText(fmt.ctprintf("Velocity %f:%f", game.player.velocity.x, game.player.velocity.y), 10, 70, 20, rl.YELLOW)
-        rl.DrawText(fmt.ctprintf("State %s", game.player.state), 10, 90, 20, rl.YELLOW)
+        rl.DrawText(fmt.ctprintf("Tile Position %f:%f", game.player.position.x, game.player.position.y), 10, 30, 20, rl.YELLOW)
+        rl.DrawText(fmt.ctprintf("World Position %f:%f", playerWorldPosition.x, playerWorldPosition.y), 10, 50, 20, rl.YELLOW)
+        rl.DrawText(fmt.ctprintf("Screen Position %f:%f", playerScreenPosition.x, playerScreenPosition.y), 10, 70, 20, rl.YELLOW)
+        rl.DrawText(fmt.ctprintf("Velocity %f:%f", game.player.velocity.x, game.player.velocity.y), 10, 90, 20, rl.YELLOW)
+        rl.DrawText(fmt.ctprintf("State %s", game.player.state), 10, 110, 20, rl.YELLOW)
         if game.player.isGrounded {
-            rl.DrawText(cstring("Is Grounded"), 10, 110, 20, rl.BLUE)
+            rl.DrawText(cstring("Is Grounded"), 10, 130, 20, rl.BLUE)
         }
 
         if game.player.hasCollision {
-            rl.DrawText(fmt.ctprintf("Collision"), 10, 130, 20, rl.MAGENTA)
+            rl.DrawText(fmt.ctprintf("Collision"), 10, 150, 20, rl.MAGENTA)
         }
+
+        rl.DrawText(fmt.ctprintf("Camera target %f:%f", game.camera.target.x, game.camera.target.y), 10, 170, 20, rl.BLUE)
+        rl.DrawText(fmt.ctprintf("Camera offset %f:%f", game.camera.offset.x, game.camera.offset.y), 10, 190, 20, rl.BLUE)
     }
 
     rl.EndDrawing()
